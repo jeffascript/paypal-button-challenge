@@ -1,67 +1,56 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import ReactDOM from 'react-dom'
-import { connect, FormikContextType } from 'formik'
-import type PayPal from '@paypal/paypal-js'
-const buttonStyle = {
-  color: 'gold',
-  fundingicons: false,
-  label: 'checkout',
-  shape: 'rect',
-  size: 'responsive',
-  tagline: false,
-} as PayPal.PayPalButtonsComponentOptions['style']
-type PayPalButtonComponent = React.ComponentType<
-  PayPal.PayPalButtonsComponentOptions & { commit: boolean; env: string }
->
-type PayPalButtonProps = { formik: FormikContextType<PayPalFormValues> }
+import { getPaypalButtonProps, initialisePaypal } from './usePaypalProps'
+import { PayPalButtonComponent } from './types'
 
-class PayPalButton extends React.Component<PayPalButtonProps> {
-  createOrderOrBillingAgreement = async () => {
-    this.props.formik.submitForm() // submit will call api with form values and inject _paypal_token into the form values
-    await this.sleepUntilSubmitted()
-    if (this.props.formik.isValid) this.props.formik.setSubmitting(true)
-    return this.props.formik.values._paypal_token!
-  }
+const PayPalButton = () => {
+  const paypalInstance = initialisePaypal()
+  const {
+    createOrderOrBillingAgreement,
+    onApprove,
+    onCancel,
+    onError,
+    isSubmitting,
+    paypalError,
+    formikErrors,
+    envKeys,
+    buttonStyle,
+  } = getPaypalButtonProps()
 
-  sleepUntilSubmitted = async () => {
-    const sleep = async (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-    while (this.props.formik.isSubmitting) {
-      await sleep(100)
-    }
-  }
+  const Button = useMemo(
+    () =>
+      paypalInstance
+        ? ((paypalInstance.Buttons! as any).driver('react', {
+            React,
+            ReactDOM,
+          }) as PayPalButtonComponent)
+        : null,
+    [paypalInstance]
+  )
 
-  onApprove = async () => {
-    // do something on success
-  }
+  if (!Button) return null
 
-  render = () => {
-    const paypal = window['paypal']
-    if (!paypal) return null
+  // 🚨 dummy error ===> I am just keeping this here just to show that errors are caught successfully.
+  console.log('message' in formikErrors && JSON.parse(JSON.stringify(formikErrors.message)))
+  console.log(paypalError && JSON.parse(JSON.stringify(paypalError)))
 
-    const Button = (paypal.Buttons! as any).driver('react', {
-      React,
-      ReactDOM,
-    }) as PayPalButtonComponent
-    const { isSubmitting } = this.props.formik
-
-    return (
-      <div>
-        <div style={(isSubmitting && { display: 'none' }) || {}}>
-          <Button
-            commit
-            env="sandbox"
-            createBillingAgreement={this.createOrderOrBillingAgreement}
-            onApprove={this.onApprove}
-            onCancel={() => this.props.formik.setSubmitting(false)}
-            onError={() => this.props.formik.setSubmitting(false)}
-            style={buttonStyle}
-          />
-        </div>
+  return (
+    <div>
+      <div style={(isSubmitting && { display: 'none' }) || {}}>
+        <Button
+          commit={envKeys.commit}
+          env={envKeys.sandbox}
+          createBillingAgreement={createOrderOrBillingAgreement}
+          onApprove={onApprove}
+          onCancel={onCancel}
+          onError={onError}
+          style={buttonStyle}
+        />
       </div>
-    )
-  }
+    </div>
+  )
 }
 
-export type PayPalFormValues = { _paypal_token?: string }
+const PaypalButton = React.memo(PayPalButton)
 
-export default connect<{}, PayPalFormValues>(PayPalButton)
+export default PaypalButton
